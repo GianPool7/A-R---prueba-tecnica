@@ -17,6 +17,7 @@ Aplicación web para visualizar puntos de venta, segmentarlos por vendedores y g
 
 ```bash
 GOOGLE_MAPS_API_KEY=tu_api_key
+VITE_API_URL=http://localhost:4000
 ```
 
 2. Levanta los servicios:
@@ -38,6 +39,12 @@ http://localhost:5173
 ```
 
 La API queda en `http://localhost:4000`.
+
+En un servidor público cambia `VITE_API_URL` por la IP o dominio del backend, por ejemplo:
+
+```bash
+VITE_API_URL=http://TU_IP_DEL_SERVIDOR:4000
+```
 
 ## Estrategia para 18k puntos
 
