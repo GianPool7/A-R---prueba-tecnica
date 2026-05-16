@@ -2,7 +2,7 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {GoogleMapsOverlay} from '@deck.gl/google-maps';
 import {GeoJsonLayer, ScatterplotLayer} from '@deck.gl/layers';
-import {getHealth, generateTerritories, getPoints, getSellers, getTerritories, getTerritoryPoints} from './api';
+import {clearData, getHealth, generateTerritories, getPoints, getSellers, getTerritories, getTerritoryPoints, uploadData} from './api';
 import {loadGoogleMaps} from './google';
 import type {FeatureCollection, PointProperties, Seller, TerritoryProperties} from './types';
 import './styles.css';
@@ -19,11 +19,17 @@ function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
+function seconds(ms: number) {
+  return (ms / 1000).toLocaleString('es-PE', {maximumFractionDigits: 2});
+}
+
 function App() {
   const mapNode = useRef<HTMLDivElement | null>(null);
   const searchNode = useRef<HTMLInputElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const overlayRef = useRef<GoogleMapsOverlay | null>(null);
+  const pointsFileRef = useRef<HTMLInputElement | null>(null);
+  const sellersFileRef = useRef<HTMLInputElement | null>(null);
 
   const [health, setHealth] = useState({points: 0, sellers: 0, territories: 0});
   const [sellers, setSellers] = useState<Seller[]>([]);
@@ -33,6 +39,7 @@ function App() {
   const [territories, setTerritories] = useState<FeatureCollection<TerritoryProperties> | null>(null);
   const [selectedTerritory, setSelectedTerritory] = useState<TerritoryProperties | null>(null);
   const [territoryPoints, setTerritoryPoints] = useState<Array<{clientCode: string; clientName: string; currency: string; amount: number}>>([]);
+  const [importResult, setImportResult] = useState('');
   const [loading, setLoading] = useState('Inicializando mapa');
   const [error, setError] = useState('');
 
@@ -156,6 +163,56 @@ function App() {
     }
   };
 
+  const runImport = async () => {
+    const pointsFile = pointsFileRef.current?.files?.[0];
+    const sellersFile = sellersFileRef.current?.files?.[0];
+    if (!pointsFile || !sellersFile) {
+      setError('Selecciona points.csv y sellers.csv');
+      return;
+    }
+
+    try {
+      setError('');
+      setImportResult('');
+      setLoading('Importando nuevos datos');
+      const [pointsCsv, sellersCsv] = await Promise.all([pointsFile.text(), sellersFile.text()]);
+      const result = await uploadData(pointsCsv, sellersCsv);
+      setSelectedTerritory(null);
+      setTerritoryPoints([]);
+      const sellerData = await getSellers();
+      setSellers(sellerData);
+      setSelectedSellers(sellerData.slice(0, 5).map((seller) => seller.id));
+      await refreshData();
+      setImportResult(
+        `Importados ${result.points.toLocaleString('es-PE')} puntos y ${result.sellers.toLocaleString('es-PE')} vendedores en ${seconds(result.elapsedMs)} s`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error importando datos');
+      setLoading('');
+    }
+  };
+
+  const runClear = async () => {
+    try {
+      setError('');
+      setImportResult('');
+      setLoading('Borrando datos');
+      await clearData();
+      setHealth({points: 0, sellers: 0, territories: 0});
+      setSellers([]);
+      setSelectedSellers([]);
+      setPoints({type: 'FeatureCollection', features: []});
+      setTerritories({type: 'FeatureCollection', features: []});
+      setSelectedTerritory(null);
+      setTerritoryPoints([]);
+      setLoading('');
+      setImportResult('Datos borrados. Puedes subir nuevos CSV.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error borrando datos');
+      setLoading('');
+    }
+  };
+
   const resetFilter = async () => {
     if (searchNode.current) searchNode.current.value = '';
     mapRef.current?.setCenter(lima);
@@ -195,6 +252,28 @@ function App() {
           <input ref={searchNode} placeholder="Distrito, avenida o local" />
         </label>
         <button className="secondary" onClick={resetFilter}>Ver todos los puntos</button>
+
+        <section className="upload-panel">
+          <div className="section-title">
+            <strong>Cargar data</strong>
+            <span>reemplaza todo</span>
+          </div>
+          <label className="field">
+            <span>Puntos CSV/GeoJSON</span>
+            <input ref={pointsFileRef} type="file" accept=".csv,.json,.geojson,text/csv,application/json,application/geo+json" />
+          </label>
+          <label className="field">
+            <span>Vendedores CSV</span>
+            <input ref={sellersFileRef} type="file" accept=".csv,text/csv" />
+          </label>
+          <button className="secondary" onClick={runImport} disabled={!!loading}>
+            Subir y pintar en mapa
+          </button>
+          <button className="danger" onClick={runClear} disabled={!!loading}>
+            Borrar datos
+          </button>
+          {importResult && <p className="import-result">{importResult}</p>}
+        </section>
 
         <div className="controls">
           <label className="field">

@@ -84,6 +84,11 @@ input {
   background: #fff;
 }
 
+input[type="file"] {
+  padding: 7px 8px;
+  font-size: 12px;
+}
+
 button {
   min-height: 40px;
   padding: 8px 12px;
@@ -104,10 +109,30 @@ button.secondary {
   background: #e8f3ef;
 }
 
+button.danger {
+  color: #9f1239;
+  background: #ffe4e6;
+}
+
 .controls {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
+}
+
+.upload-panel {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #dce3df;
+  border-radius: 8px;
+  background: #f8faf9;
+}
+
+.import-result {
+  margin: 0;
+  color: #176b5b;
+  font-size: 13px;
 }
 
 .section-title {

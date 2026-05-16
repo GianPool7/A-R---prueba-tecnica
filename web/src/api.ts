@@ -41,3 +41,16 @@ export function generateTerritories(sellerIds: number[], clientsPerSeller: numbe
     body: JSON.stringify({sellerIds, clientsPerSeller})
   });
 }
+
+export function uploadData(pointsCsv: string, sellersCsv: string) {
+  return request<{points: number; sellers: number; territories: number; elapsedMs: number}>('/api/import', {
+    method: 'POST',
+    body: JSON.stringify({pointsCsv, sellersCsv})
+  });
+}
+
+export function clearData() {
+  return request<{points: number; sellers: number; territories: number}>('/api/clear', {
+    method: 'POST'
+  });
+}

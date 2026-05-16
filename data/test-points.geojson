@@ -1,0 +1,47 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-77.0428, -12.0464]
+      },
+      "properties": {
+        "clientCode": "GEO-001",
+        "clientName": "Cliente Lima Centro",
+        "amount": 1500,
+        "currency": "S/",
+        "color": "#8f8f8f"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-77.0300, -12.0600]
+      },
+      "properties": {
+        "clientCode": "GEO-002",
+        "clientName": "Cliente Miraflores",
+        "amount": 2800,
+        "currency": "S/",
+        "color": "#8f8f8f"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-76.9975, -12.0619]
+      },
+      "properties": {
+        "clientCode": "GEO-003",
+        "clientName": "Cliente La Molina",
+        "amount": 3200,
+        "currency": "S/",
+        "color": "#8f8f8f"
+      }
+    }
+  ]
+}

@@ -1,11 +1,99 @@
 import cors from 'cors';
 import express from 'express';
+import {parse} from 'csv-parse/sync';
 import {pool, withClient} from './db.js';
 import {colorForIndex, convexHull, haversineKm} from './geo.js';
 
 const app = express();
 app.use(cors());
-app.use(express.json({limit: '2mb'}));
+app.use(express.json({limit: '25mb'}));
+
+function excelSerialToDate(value) {
+  const serial = Number(value);
+  if (!Number.isFinite(serial) || serial <= 1) return null;
+  const excelEpoch = Date.UTC(1899, 11, 30);
+  return new Date(excelEpoch + serial * 86400000).toISOString().slice(0, 10);
+}
+
+function parseCsv(content, label) {
+  if (typeof content !== 'string' || content.trim().length === 0) {
+    throw new Error(`${label} CSV is required`);
+  }
+  return parse(content, {columns: true, skip_empty_lines: true, trim: true});
+}
+
+function parsePointsContent(content) {
+  if (typeof content !== 'string' || content.trim().length === 0) {
+    throw new Error('points file is required');
+  }
+
+  const trimmed = content.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    return parseCsv(content, 'points');
+  }
+
+  const json = JSON.parse(trimmed);
+  const features = Array.isArray(json) ? json : json.features;
+  if (!Array.isArray(features)) {
+    throw new Error('points GeoJSON must be a FeatureCollection or an array of features');
+  }
+
+  return features.map((feature) => {
+    const properties = feature.properties || {};
+    const coordinates = feature.geometry?.coordinates || [];
+    return {
+      Cliente: properties.clientCode || properties.client_code || properties.Cliente || properties.id,
+      Nombre_del_cliente: properties.clientName || properties.client_name || properties.Nombre_del_cliente || 'Cliente sin nombre',
+      Ultima_fecha_de_compra: properties.lastPurchaseDate || properties.last_purchase_date || properties.Ultima_fecha_de_compra,
+      Longitud: coordinates[0] ?? properties.longitude ?? properties.Longitud,
+      Latitud: coordinates[1] ?? properties.latitude ?? properties.Latitud,
+      Monto_Compra_anual: properties.amount ?? properties.annual_purchase_amount ?? properties.Monto_Compra_anual ?? 0,
+      Moneda: properties.currency || properties.Moneda || 'S/'
+    };
+  });
+}
+
+async function importSellersRows(client, rows) {
+  let imported = 0;
+  for (const row of rows) {
+    const id = Number(row.CODIGO);
+    if (!Number.isFinite(id)) continue;
+    await client.query(
+      `INSERT INTO sellers (id, name)
+       VALUES ($1, $2)`,
+      [id, row['APELLIDOS Y NOMBRES DEL VENDEDOR']]
+    );
+    imported += 1;
+  }
+  return imported;
+}
+
+async function importPointRows(client, rows) {
+  let imported = 0;
+  for (const row of rows) {
+    const lng = Number(row.Longitud);
+    const lat = Number(row.Latitud);
+    if (!row.Cliente || !Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+    await client.query(
+      `INSERT INTO points_of_sale (
+         client_code, client_name, last_purchase_date, longitude, latitude,
+         annual_purchase_amount, currency, geom
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, ST_SetSRID(ST_MakePoint($4, $5), 4326))`,
+      [
+        row.Cliente,
+        row.Nombre_del_cliente,
+        excelSerialToDate(row.Ultima_fecha_de_compra),
+        lng,
+        lat,
+        Number(row.Monto_Compra_anual || 0),
+        row.Moneda || 'S/'
+      ]
+    );
+    imported += 1;
+  }
+  return imported;
+}
 
 app.get('/api/health', async (_req, res, next) => {
   try {
@@ -25,6 +113,42 @@ app.get('/api/sellers', async (_req, res, next) => {
   try {
     const {rows} = await pool.query('SELECT id, name FROM sellers ORDER BY id');
     res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/import', async (req, res, next) => {
+  const start = performance.now();
+  try {
+    const sellersRows = parseCsv(req.body.sellersCsv, 'sellers');
+    const pointRows = parsePointsContent(req.body.pointsCsv);
+
+    const result = await withClient(async (client) => {
+      await client.query('BEGIN');
+      try {
+        await client.query('TRUNCATE territory_points, territories, points_of_sale, sellers RESTART IDENTITY CASCADE');
+        const sellers = await importSellersRows(client, sellersRows);
+        const points = await importPointRows(client, pointRows);
+        await client.query('COMMIT');
+        return {sellers, points};
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      }
+    });
+
+    const elapsedMs = Math.round(performance.now() - start);
+    res.json({...result, territories: 0, elapsedMs});
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/clear', async (_req, res, next) => {
+  try {
+    await pool.query('TRUNCATE territory_points, territories, points_of_sale, sellers RESTART IDENTITY CASCADE');
+    res.json({points: 0, sellers: 0, territories: 0});
   } catch (error) {
     next(error);
   }
